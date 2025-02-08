@@ -27,6 +27,7 @@ function tokenize(input, filename)
         {"line_break", "^\n"},
 
         {"whitespace", "^%s+"},
+        {"comma", "^,"},
     }
 
     while #input > 0 do
@@ -84,13 +85,103 @@ function print_parse_error(error, message, tokens)
     os.exit(1)
 end
 
-function parse(tokens)
-    local ast = {}
-    -- parse assignment
-    if (tokens[tokens.index].type == "keyword" and tokens[tokens.index].value == "local") or
-    (tokens[tokens.index].type == "identifier" and tokens[tokens.index + 1].type == "operator" and tokens[tokens.index + 1].value == "=") then
-        return parse_assignment(tokens, ast)
+function peek_token_type(tokens, shift)
+    local index = tokens.index
+    if shift ~= nil then
+        index = index + shift
     end
+    return tokens[index].type
+end
+
+function match_token_type(tokens, type, shift)
+    if type ~= peek_token_type(tokens, shift) then
+        return false
+    else
+        return true
+    end
+end
+
+function peek_token_value(tokens, shift)
+    local index = tokens.index
+    if shift ~= nil then
+        index = index + shift
+    end
+    return tokens[index].value
+end
+
+function match_token_value(tokens, value, shift)
+    if value ~= peek_token_value(tokens, shift) then
+        return false
+    else
+        return true
+    end
+end
+
+function parse(tokens)
+    local root = { type = "glue" }
+    local current = root
+
+    while true do
+        if (tokens[tokens.index].type == "keyword" and tokens[tokens.index].value == "local") or
+        (tokens[tokens.index].type == "identifier" and tokens[tokens.index + 1].type == "operator" and tokens[tokens.index + 1].value == "=") then
+            current.right = parse_assignment(tokens)
+            current.left = { type = "glue" }
+            current = current.left
+        end
+
+        if (match_token_type(tokens, "identifier") and match_token_value(tokens, "(", 1)) then
+            current.right = parse_call(tokens)
+            current.left = { type = "glue" }
+            current = current.left
+        end
+        
+        if tokens[tokens.index].type == "line_break" then
+            tokens.index = tokens.index + 1
+        end
+        
+        if tokens.index >= #tokens then
+            break
+        end
+    end
+
+    return root
+end
+
+function parse_call(tokens)
+    local ast_node = {
+        type = "call",
+    }
+
+    ast_node.left = {type = "identifier", value = tokens[tokens.index].value}
+    tokens.index = tokens.index + 1
+
+    if match_token_value(tokens, "(") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected '(' but got " .. tokens[tokens.index + 1].value, tokens)
+    end
+
+    local start = true
+    ast_node.right = {type="parameters", value = {}}
+
+    while match_token_value(tokens, ",", 0) or start do
+        start = false
+        if match_token_value(tokens, ",", 0) then
+            tokens.index = tokens.index + 1
+        end
+            
+
+        ast_node.right.value[#ast_node.right.value + 1] = parse_expression(tokens, 1)
+        -- table.insert(ast_node.right.value, parse_expression(tokens, 1))
+    end
+
+    if match_token_value(tokens, ")") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected ')' but got " .. tokens[tokens.index].value, tokens)
+    end
+
+    return ast_node
 end
 
 function parse_assignment(tokens)
@@ -114,11 +205,7 @@ function parse_assignment(tokens)
     ast_node.right = parse_expression(tokens, 1)
 
     return ast_node
-end
-
-function parse_infix(left, tokens)
-    
-end
+end 
 
 function get_precedence(token, tokens)
     local precedence_table = {
@@ -131,12 +218,13 @@ function get_precedence(token, tokens)
     if precedence_table[token] then
         return precedence_table[token]
     else
-        print_parse_error("Parse error", "Unknown operator in expression: " .. token, tokens)
+        return -1
     end
 end
 
 function parse_expression(tokens, precedence)
     local left = {}
+    
     if tokens[tokens.index].type == "delimiter" and tokens[tokens.index].value == "(" then
         tokens.index = tokens.index + 1  
         left = parse_expression(tokens, 0)  
@@ -150,14 +238,18 @@ function parse_expression(tokens, precedence)
     if tokens[tokens.index].type == "number" or tokens[tokens.index].type == "identifier" then
         left = {type = tokens[tokens.index].type, value = tokens[tokens.index].value}
         tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected number or identifier but got " .. tokens[tokens.index].value, tokens)
     end
-
+    
     while true do
         local current_token = tokens[tokens.index]
-        if current_token.type == "line_break" then
+
+        local current_precedence = get_precedence(current_token.value, tokens)
+
+        if tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
             break
         end
-        local current_precedence = get_precedence(current_token.value, tokens)
 
         if current_precedence < precedence then
             break
@@ -176,8 +268,26 @@ function parse_expression(tokens, precedence)
 end
 
 function print_expression(ast)
+    if ast == nil then
+        return ""
+    end
+    
     if ast.type == "number" then
         return tostring(ast.value)
+    elseif ast.type == "call" then
+        local left_str = print_expression(ast.left)
+        local right_str = print_expression(ast.right)
+        return "Call: " .. left_str .. " " .. right_str
+    elseif ast.type == "parameters" then
+        local right_str = ""
+        for i, param in ipairs(ast.value) do
+            right_str = right_str .. print_expression(param) .. (ast.value[i + 1] ~= nil and ", " or "")
+        end
+        return right_str
+    elseif ast.type == "glue" then
+        local left_str = print_expression(ast.left)
+        local right_str = print_expression(ast.right)
+        return right_str .. (right_str ~= "" and "\n" or "") .. left_str
     elseif ast.type == "binary" then
         local left = print_expression(ast.left)
         local right = print_expression(ast.right)
@@ -186,7 +296,7 @@ function print_expression(ast)
     elseif ast.type == "assignment" then
         local left = print_expression(ast.left)
         local right = print_expression(ast.right)
-        return left .. " = " .. right
+        return "Assign: " .. left .. " = " .. right
     elseif ast.type == "identifier" then
         return ast.value
     else
