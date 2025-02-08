@@ -1,0 +1,1 @@
+gcc -o main main.c -I/usr/include/luajit-2.1 -L/usr/lib/x86_64-linux-gnu -l:libluajit-5.1.so
