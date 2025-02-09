@@ -60,11 +60,15 @@ function parse(tokens, params)
             current.left = { type = "glue" }
             current = current.left
             goto continue
+
         elseif params.inside_block and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
             break
         elseif params.inside_branch and tokens[tokens.index].type == "keyword" and 
             (match_token_value(tokens, "elseif") or match_token_value(tokens, "else")) then
             break
+        elseif params.inside_block and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "until") then
+            break
+
         elseif params.inside_branch and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
             tokens.index = tokens.index + 1
             break
@@ -75,6 +79,11 @@ function parse(tokens, params)
             goto continue
         elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "while" then
             current.right = parse_while(tokens)
+            current.left = { type = "glue" }
+            current = current.left
+            goto continue
+        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "repeat" then
+            current.right = parse_repeat(tokens)
             current.left = { type = "glue" }
             current = current.left
             goto continue
@@ -95,6 +104,31 @@ function parse(tokens, params)
     end
 
     return root
+end
+
+function parse_repeat(tokens)
+    local ast_node = {
+        type = "repeat",
+        expression = {},
+        body = {},
+    }
+
+    if match_token_value(tokens, "repeat") then
+        tokens.index = tokens.index + 1
+    end
+
+    ast_node.body = parse(tokens, {inside_block = true})
+
+    if match_token_value(tokens, "until") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected 'until' but got " .. tokens[tokens.index].value, tokens)
+    end
+
+    ast_node.expression = parse_expression(tokens, 0)
+
+    return ast_node
+
 end
 
 function parse_while(tokens)
@@ -341,9 +375,13 @@ function print_expression(ast)
         return tostring(ast.value)
     elseif ast.type == "while" then
         local expression_str = print_expression(ast.expression)
-        -- local body_str = print_expression(ast.body)
         local body_str = print_expression(ast.body)
         local result = BOLD .. "While: " .. RESET .. expression_str .. BOLD .. "\nDo:\n" .. RESET .. body_str .. ":Close While" .. RESET
+        return result
+    elseif ast.type == "repeat" then
+        local body_str = print_expression(ast.body)
+        local expression_str = print_expression(ast.expression)
+        local result = BOLD .. "Repeat: " .. RESET .. BOLD .. "\nUntil:\n" .. RESET .. body_str .. ":Close Repeat" .. expression_str .. RESET
         return result
     elseif ast.type == "if" then
         local expression_str = print_expression(ast.expression)
