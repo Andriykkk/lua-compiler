@@ -1,84 +1,10 @@
-function tokenize(input, filename)
-    local line = 1
-    local column = 1
+local tokenizer = require("tokenizer")
 
-    local tokens = {}
-    local patterns = {
-        -- keywords
-        {"keyword", "^(function)[^%s]"},
-        {"keyword", "^(local)%s"},
-
-        {"number", "^[+-]?%d+%.?%d*"},
-
-        {"identifier", "^[a-zA-Z_][a-zA-Z0-9_]*"},
-
-        {"comment", "^^--[^\n]*"},
-
-        {"delimiter", "^[{}%[%]()%]]"},
-
-        {"string", "^\"[^\"]*\""},
-
-        {"concat", "^%.%."},
-
-        -- operators
-        {"operator", "^=="},
-        {"operator", "^[*/=%+-%.]"},
-
-        {"line_break", "^\n"},
-
-        {"whitespace", "^%s+"},
-        {"comma", "^,"},
-    }
-
-    while #input > 0 do
-        local match = false
-        for _, pattern in ipairs(patterns) do
-            local name, pattern = unpack(pattern)
-            local value = input:match(pattern)
-            if value then
-
-                -- whitespace
-                if name == "whitespace" then
-                    column = column + #value
-                    input = input:sub(#value + 1)
-                    match = true
-                    goto continue
-                end
-
-                if name == "comment" then
-                    input = input:sub(#value + 1)
-                    column = column + #value
-                    match = true
-                    goto continue
-                end
-
-                if name == "line_break" then
-                    input = input:sub(#value + 1)
-                    line = line + 1
-                    column = 1
-                    match = true
-                    table.insert(tokens, {type = name, value = value, line = line, column = column})
-                    goto continue
-                end
-
-                table.insert(tokens, {type = name, value = value, line = line, column = column})
-                input = input:sub(#value + 1)
-                column = column + #value
-                match = true
-                break
-            end
-
-            ::continue::
-        end
-        if not match then
-            print("Unknown character: " .. filename .. ":" .. line .. ":" .. column .. ": " .. input:sub(1, 1))
-            os.exit(1)
-        end
-    end
-
-    tokens.index = 1
-    return tokens
-end
+local RESET = "\27[0m"
+local BOLD = "\27[1m"
+local RED = "\27[31m"
+local GREEN = "\27[32m"
+local BLUE = "\27[34m"
 
 function print_parse_error(error, message, tokens)
     print(error .. " " .. args.filename .. ":" .. tokens[tokens.index].line .. ":" .. tokens[tokens.index].column .. ": " .. message)
@@ -117,31 +43,108 @@ function match_token_value(tokens, value, shift)
     end
 end
 
-function parse(tokens)
+function parse(tokens, params)
     local root = { type = "glue" }
     local current = root
 
+    if params == nil then
+        params = {}
+    end
+
     while true do
+        if tokens[tokens.index] == nil then
+            break
+        end
         if (tokens[tokens.index].type == "keyword" and tokens[tokens.index].value == "local") or
         (tokens[tokens.index].type == "identifier" and tokens[tokens.index + 1].type == "operator" and tokens[tokens.index + 1].value == "=") then
             current.right = parse_assignment(tokens)
             current.left = { type = "glue" }
             current = current.left
-        end
-
-        if (match_token_type(tokens, "identifier") and match_token_value(tokens, "(", 1)) then
+            goto continue
+        elseif (match_token_type(tokens, "identifier") and match_token_value(tokens, "(", 1)) then
             current.right = parse_call(tokens)
             current.left = { type = "glue" }
             current = current.left
-        end
-        
-        if tokens[tokens.index].type == "line_break" then
+            goto continue
+        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "if" then
+            current.right = parse_if_statement(tokens)
+            current.left = { type = "glue" }
+            current = current.left
+            goto continue
+        elseif tokens[tokens.index].type == "line_break" then
             tokens.index = tokens.index + 1
+            goto continue
+        elseif params.inside_block then
+            if tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
+                break
+            end
+        elseif params.inside_branch and tokens[tokens.index].type == "keyword" and 
+            (match_token_value(tokens, "elseif") or match_token_value(tokens, "else")) then
+            break
+        elseif params.inside_branch and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
+            tokens.index = tokens.index + 1
+            break
+        else
+            print_parse_error("Parse error", "Unexpected keyword: " .. tokens[tokens.index].value, tokens)
+            break        
+        end
+
+        ::continue::
+    end
+
+    return root
+end
+
+function parse_if_statement(tokens)
+    local root ={
+        type = "if",
+        expression = {},
+        body = {},
+    }
+    local ast_node = root
+
+    if match_token_value(tokens, "if") then
+        tokens.index = tokens.index + 1
+    end
+
+    ast_node.expression = parse_expression(tokens, 0)
+
+    if match_token_value(tokens, "then") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected 'then' but got " .. tokens[tokens.index].value, tokens)
+    end
+
+    ast_node.body = parse(tokens, {inside_branch = true})
+    
+    while match_token_value(tokens, "elseif") do
+        tokens.index = tokens.index + 1
+        local elseif_node = {
+            type = "elseif",
+            expression = parse_expression(tokens, 0),
+        }
+        
+        if match_token_value(tokens, "then") then
+            tokens.index = tokens.index + 1
+        else
+            print_parse_error("Parse error", "Expected 'then' but got " .. tokens[tokens.index].value, tokens)
         end
         
-        if tokens.index >= #tokens then
-            break
-        end
+        elseif_node.body = parse(tokens, {inside_branch = true})
+        ast_node.else_body = elseif_node
+        ast_node = elseif_node
+    end
+
+    if match_token_value(tokens, "else") then
+        tokens.index = tokens.index + 1
+
+        local else_node = {
+            type = "else",
+        }
+
+        else_node.body = parse(tokens, {inside_branch = true})
+        ast_node.else_body = else_node
+        ast_node = else_node
     end
 
     return root
@@ -209,11 +212,23 @@ end
 
 function get_precedence(token, tokens)
     local precedence_table = {
-        ["+"] = 1,
-        ["-"] = 1,
-        ["*"] = 2,
-        ["/"] = 2,
-        ["."] = 7
+        ["or"] = 1,
+        ["and"] = 2,
+        ["<"] = 3,
+        [">"] = 3,
+        ["<="] = 3,
+        [">="] = 3,
+        ["=="] = 3,
+        ["~="] = 3,
+        [".."] = 4,
+        ["+"] = 5,
+        ["-"] = 5,
+        ["*"] = 6,
+        ["/"] = 6,
+        ["not"] = 7,
+        ["-"] = 8,
+        ["^"] = 9,
+        ["."] = 10
     }
     if precedence_table[token] then
         return precedence_table[token]
@@ -230,6 +245,19 @@ function parse_expression(tokens, precedence)
         left = parse_expression(tokens, 0)  
         if tokens[tokens.index].type == "delimiter" and tokens[tokens.index].value == ")" then
             tokens.index = tokens.index + 1  
+            if tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
+                return left
+            end
+
+            local current_token = tokens[tokens.index]
+            local current_precedence = get_precedence(current_token.value, tokens)
+            if current_token.type == "operator" then
+                local operator = current_token.value
+                tokens.index = tokens.index + 1
+
+                local right = parse_expression(tokens, current_precedence + 1)
+                left = {type = "binary", left = left, operator = operator, right = right}
+            end
         else
             print_parse_error("Parse error", "Expected ')':", tokens)
         end
@@ -238,6 +266,8 @@ function parse_expression(tokens, precedence)
     if tokens[tokens.index].type == "number" or tokens[tokens.index].type == "identifier" then
         left = {type = tokens[tokens.index].type, value = tokens[tokens.index].value}
         tokens.index = tokens.index + 1
+    elseif tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
+        return left
     else
         print_parse_error("Parse error", "Expected number or identifier but got " .. tokens[tokens.index].value, tokens)
     end
@@ -274,6 +304,23 @@ function print_expression(ast)
     
     if ast.type == "number" then
         return tostring(ast.value)
+    elseif ast.type == "if" then
+        local expression_str = print_expression(ast.expression)
+        local body_str = print_expression(ast.body)
+        local else_body_str = print_expression(ast.else_body)
+        local result = BOLD .."If: " .. RESET .. expression_str .. BOLD .. "\nThen:\n" .. RESET .. body_str .. BOLD .. else_body_str
+        return result
+    elseif ast.type == "elseif" then
+        local expression_str = print_expression(ast.expression)
+        local body_str = print_expression(ast.body)
+        local else_body_str = print_expression(ast.else_body)
+        local result = BOLD .. "Elseif: " .. RESET .. expression_str .. BOLD .. "\nThen:\n" .. RESET .. body_str .. BOLD .. else_body_str
+        return result
+    elseif ast.type == "else" then
+        local body_str = print_expression(ast.body)
+        local else_body_str = print_expression(ast.else_body)
+        local result = BOLD .. "Else:\n" .. RESET .. body_str .. BOLD .. else_body_str
+        return result
     elseif ast.type == "call" then
         local left_str = print_expression(ast.left)
         local right_str = print_expression(ast.right)
@@ -348,13 +395,15 @@ end
 args = {}
 -- 
 
-
-
 function main()
     args = parse_args()
 
     local content = read_source(args.filename)
-    local tokens = tokenize(content, args.filename)
+    local tokens = tokenizer.tokenize(content, args.filename)
     local ast = parse(tokens)
     print(print_expression(ast)) 
+    -- for i, token in ipairs(tokens) do
+    --     print(token.type .. ": " .. token.value)
+    -- end
+
 end

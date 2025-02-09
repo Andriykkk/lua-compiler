@@ -1,7 +1,10 @@
--- local a = -5.0 + g.g * 4 + 2 / 5
--- A simple Lua script to add two numbers
--- local b = 10
--- local sum = a + b
-x = 10
-print(1, 2, 2 / 5)
--- print("The sum is: " .. sum)
+if x > 10 then
+    print(1, 2, 2 / 5)
+    if g == nil then
+        print(1, 2, 2 / 5)
+    elseif g == nil then
+        print2(3)
+    end
+else
+    print(5)
+end
