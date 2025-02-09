@@ -50,19 +50,31 @@ function parse(tokens, params)
     if params == nil then
         params = {}
     end
-
     while true do
         if tokens[tokens.index] == nil then
             break
         end
         if (tokens[tokens.index].type == "keyword" and tokens[tokens.index].value == "local") or
-        (tokens[tokens.index].type == "identifier" and tokens[tokens.index + 1].type == "operator" and tokens[tokens.index + 1].value == "=") then
+        (tokens[tokens.index].type == "identifier" and tokens[tokens.index + 1] ~= nil and tokens[tokens.index + 1].type == "operator" and tokens[tokens.index + 1].value == "=") then
             current.right = parse_assignment(tokens)
             current.left = { type = "glue" }
             current = current.left
             goto continue
+        elseif params.inside_block and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
+            break
+        elseif params.inside_branch and tokens[tokens.index].type == "keyword" and 
+            (match_token_value(tokens, "elseif") or match_token_value(tokens, "else")) then
+            break
+        elseif params.inside_branch and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
+            tokens.index = tokens.index + 1
+            break
         elseif (match_token_type(tokens, "identifier") and match_token_value(tokens, "(", 1)) then
             current.right = parse_call(tokens)
+            current.left = { type = "glue" }
+            current = current.left
+            goto continue
+        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "while" then
+            current.right = parse_while(tokens)
             current.left = { type = "glue" }
             current = current.left
             goto continue
@@ -74,16 +86,6 @@ function parse(tokens, params)
         elseif tokens[tokens.index].type == "line_break" then
             tokens.index = tokens.index + 1
             goto continue
-        elseif params.inside_block then
-            if tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
-                break
-            end
-        elseif params.inside_branch and tokens[tokens.index].type == "keyword" and 
-            (match_token_value(tokens, "elseif") or match_token_value(tokens, "else")) then
-            break
-        elseif params.inside_branch and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
-            tokens.index = tokens.index + 1
-            break
         else
             print_parse_error("Parse error", "Unexpected keyword: " .. tokens[tokens.index].value, tokens)
             break        
@@ -93,6 +95,40 @@ function parse(tokens, params)
     end
 
     return root
+end
+
+function parse_while(tokens)
+    local ast_node = {
+        type = "while",
+        expression = {},
+        body = {},
+    }
+
+    if match_token_value(tokens, "while") then
+        tokens.index = tokens.index + 1
+    end
+
+    ast_node.expression = parse_expression(tokens, 0)
+
+    if match_token_type(tokens, "line_break") then
+        tokens.index = tokens.index + 1
+    end
+
+    if match_token_value(tokens, "do") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected 'do' but got " .. tokens[tokens.index].value, tokens)
+    end
+
+    ast_node.body = parse(tokens, {inside_block = true})
+
+    if match_token_value(tokens, "end") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected 'end' but got " .. tokens[tokens.index].value, tokens)
+    end
+
+    return ast_node
 end
 
 function parse_if_statement(tokens)
@@ -175,7 +211,6 @@ function parse_call(tokens)
             
 
         ast_node.right.value[#ast_node.right.value + 1] = parse_expression(tokens, 1)
-        -- table.insert(ast_node.right.value, parse_expression(tokens, 1))
     end
 
     if match_token_value(tokens, ")") then
@@ -304,6 +339,12 @@ function print_expression(ast)
     
     if ast.type == "number" then
         return tostring(ast.value)
+    elseif ast.type == "while" then
+        local expression_str = print_expression(ast.expression)
+        -- local body_str = print_expression(ast.body)
+        local body_str = print_expression(ast.body)
+        local result = BOLD .. "While: " .. RESET .. expression_str .. BOLD .. "\nDo:\n" .. RESET .. body_str .. ":Close While" .. RESET
+        return result
     elseif ast.type == "if" then
         local expression_str = print_expression(ast.expression)
         local body_str = print_expression(ast.body)

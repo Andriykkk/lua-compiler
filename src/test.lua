@@ -1,10 +1,9 @@
-if x > 10 then
-    print(1, 2, 2 / 5)
-    if g == nil then
+
+while x > 2 do
+    if x > 10 then
         print(1, 2, 2 / 5)
-    elseif g == nil then
-        print2(3)
+    else
+        print(5)
     end
-else
-    print(5)
 end
+print(15)
