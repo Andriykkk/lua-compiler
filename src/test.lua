@@ -1,4 +1,10 @@
-
+function print(a, b, c)
+    some(a, b, c)
+    some(a, b, c)
+    return some
+    some(a, b, c)
+    return some2
+end
 repeat
     if x > 10 then
         print(1, 2, 2 / 5)

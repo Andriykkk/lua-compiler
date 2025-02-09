@@ -68,10 +68,10 @@ function parse(tokens, params)
             break
         elseif params.inside_block and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "until") then
             break
-
         elseif params.inside_branch and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
             tokens.index = tokens.index + 1
             break
+
         elseif (match_token_type(tokens, "identifier") and match_token_value(tokens, "(", 1)) then
             current.right = parse_call(tokens)
             current.left = { type = "glue" }
@@ -79,6 +79,11 @@ function parse(tokens, params)
             goto continue
         elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "while" then
             current.right = parse_while(tokens)
+            current.left = { type = "glue" }
+            current = current.left
+            goto continue
+        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "function" then
+            current.right = parse_function(tokens)
             current.left = { type = "glue" }
             current = current.left
             goto continue
@@ -220,13 +225,21 @@ function parse_if_statement(tokens)
     return root
 end
 
-function parse_call(tokens)
+function parse_function(tokens)
     local ast_node = {
-        type = "call",
+        type = "function",
     }
 
-    ast_node.left = {type = "identifier", value = tokens[tokens.index].value}
-    tokens.index = tokens.index + 1
+    if match_token_value(tokens, "function") then
+        tokens.index = tokens.index + 1
+    end
+
+    if match_token_type(tokens, "identifier") then
+        ast_node.value = {type = "identifier", value = tokens[tokens.index].value}
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected identifier but got " .. tokens[tokens.index].value, tokens)
+    end
 
     if match_token_value(tokens, "(") then
         tokens.index = tokens.index + 1
@@ -242,7 +255,54 @@ function parse_call(tokens)
         if match_token_value(tokens, ",", 0) then
             tokens.index = tokens.index + 1
         end
-            
+
+        ast_node.right.value[#ast_node.right.value + 1] = parse_expression(tokens, 1)
+    end
+
+    if match_token_value(tokens, ")") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected ')' but got " .. tokens[tokens.index].value, tokens)
+    end
+
+    ast_node.body = parse(tokens, {inside_block = true})
+
+    if match_token_value(tokens, "end") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected 'end' but got " .. tokens[tokens.index].value, tokens)
+    end
+
+    return ast_node
+end
+
+
+function parse_call(tokens)
+    local ast_node = {
+        type = "call",
+    }
+
+    if match_token_type(tokens, "identifier") then
+        ast_node.left = {type = "identifier", value = tokens[tokens.index].value}
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected identifier but got " .. tokens[tokens.index].value, tokens)
+    end
+
+    if match_token_value(tokens, "(") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected '(' but got " .. tokens[tokens.index + 1].value, tokens)
+    end
+
+    local start = true
+    ast_node.right = {type="parameters", value = {}}
+
+    while match_token_value(tokens, ",", 0) or start do
+        start = false
+        if match_token_value(tokens, ",", 0) then
+            tokens.index = tokens.index + 1
+        end
 
         ast_node.right.value[#ast_node.right.value + 1] = parse_expression(tokens, 1)
     end
@@ -399,6 +459,11 @@ function print_expression(ast)
         local body_str = print_expression(ast.body)
         local else_body_str = print_expression(ast.else_body)
         local result = BOLD .. "Else:\n" .. RESET .. body_str .. BOLD .. else_body_str
+        return result
+    elseif ast.type == "function" then
+        local body_str = print_expression(ast.body)
+        local value = print_expression(ast.value)
+        local result = BOLD .. "Function: " .. value .. "\nBody:\n" .. RESET .. body_str .. BOLD .. ":Close Function" .. RESET
         return result
     elseif ast.type == "call" then
         local left_str = print_expression(ast.left)

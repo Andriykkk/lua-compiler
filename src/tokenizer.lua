@@ -9,7 +9,7 @@ function tokenizer.tokenize(input, filename)
         {"comment", "^%-%-.[^\n]*"},
 
         -- keywords
-        {"keyword", "^(function)[^%s]"},
+        {"keyword", "^(function)%s"},
         {"keyword", "^(local)%s"},
         {"keyword", "^(if)%s"},
         {"keyword", "^(then)%s"},
