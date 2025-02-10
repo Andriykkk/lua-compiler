@@ -417,47 +417,33 @@ end
 
 function parse_expression(tokens, precedence)
     local left = {}
-    
     if tokens[tokens.index].type == "delimiter" and tokens[tokens.index].value == "(" then
         tokens.index = tokens.index + 1  
         left = parse_expression(tokens, 0)  
         if tokens[tokens.index].type == "delimiter" and tokens[tokens.index].value == ")" then
             tokens.index = tokens.index + 1  
-            if tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
-                return left
-            end
-
-            local current_token = tokens[tokens.index]
-            local current_precedence = get_precedence(current_token.value, tokens)
-            if current_token.type == "operator" then
-                local operator = current_token.value
-                tokens.index = tokens.index + 1
-
-                local right = parse_expression(tokens, current_precedence + 1)
-                left = {type = "binary", left = left, operator = operator, right = right}
-            end
         else
             print_parse_error("Parse error", "Expected ')':", tokens)
         end
+    else
+        if tokens[tokens.index].type == "number" then
+            left = {type = tokens[tokens.index].type, value = tokens[tokens.index].value}
+            tokens.index = tokens.index + 1
+        elseif tokens[tokens.index].type == "identifier" then
+            left = parse_complex_identifier(tokens)
+        else
+            print_parse_error("Parse error", "Expected number or identifier but got " .. tokens[tokens.index].value, tokens)
+        end
     end
 
-    if tokens[tokens.index].type == "number" or tokens[tokens.index].type == "identifier" then
-        left = {type = tokens[tokens.index].type, value = tokens[tokens.index].value}
-        tokens.index = tokens.index + 1
-    elseif tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
-        return left
-    else
-        print_parse_error("Parse error", "Expected number or identifier but got " .. tokens[tokens.index].value, tokens)
-    end
-    
     while true do
         local current_token = tokens[tokens.index]
 
-        local current_precedence = get_precedence(current_token.value, tokens)
-
-        if tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
+        if not current_token or tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
             break
         end
+
+        local current_precedence = get_precedence(current_token.value, tokens)
 
         if current_precedence < precedence then
             break
@@ -469,11 +455,106 @@ function parse_expression(tokens, precedence)
 
             local right = parse_expression(tokens, current_precedence + 1)
             left = {type = "binary", left = left, operator = operator, right = right}
+        else
+            break
         end
     end
 
     return left 
 end
+
+function parse_complex_identifier(tokens)
+    local root = {type = "identifier", value = tokens[tokens.index].value}
+    tokens.index = tokens.index + 1
+    local current_token = tokens[tokens.index]
+    
+    while true do 
+        if current_token.type == "delimiter" and match_token_value(tokens, ".") then
+            tokens.index = tokens.index + 1
+            if tokens[tokens.index].type == "identifier" then
+                root = {type = "member", object = root, property = { type = "identifier", value = tokens[tokens.index].value}}
+                tokens.index = tokens.index + 1
+            else 
+                print_parse_error("Parse error", "Expected identifier but got " .. tokens[tokens.index].value, tokens)
+            end
+        elseif current_token.type == "delimiter" and match_token_value(tokens, "[") then
+            tokens.index = tokens.index + 1
+            local index = parse_expression(tokens, 0)
+
+            if match_token_type(tokens, "delimiter") and tokens[tokens.index].value == "]" then
+                tokens.index = tokens.index + 1
+                root = {type = "index", object = root, index = index} 
+            else
+                print_parse_error("Parse error", "Expected ']' but got " .. tokens[tokens.index].value, tokens)
+            end
+        else
+            break
+        end
+    end
+
+    return root
+end
+
+
+-- function parse_expression(tokens, precedence)
+--     local left = {}
+    
+--     if tokens[tokens.index].type == "delimiter" and tokens[tokens.index].value == "(" then
+--         tokens.index = tokens.index + 1  
+--         left = parse_expression(tokens, 0)  
+--         if tokens[tokens.index].type == "delimiter" and tokens[tokens.index].value == ")" then
+--             tokens.index = tokens.index + 1  
+--             if tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
+--                 return left
+--             end
+
+--             local current_token = tokens[tokens.index]
+--             local current_precedence = get_precedence(current_token.value, tokens)
+--             if current_token.type == "operator" then
+--                 local operator = current_token.value
+--                 tokens.index = tokens.index + 1
+
+--                 local right = parse_expression(tokens, current_precedence + 1)
+--                 left = {type = "binary", left = left, operator = operator, right = right}
+--             end
+--         else
+--             print_parse_error("Parse error", "Expected ')':", tokens)
+--         end
+--     end
+
+--     if tokens[tokens.index].type == "number" or tokens[tokens.index].type == "identifier" then
+--         left = {type = tokens[tokens.index].type, value = tokens[tokens.index].value}
+--         tokens.index = tokens.index + 1
+--     elseif tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
+--         return left
+--     else
+--         print_parse_error("Parse error", "Expected number or identifier but got " .. tokens[tokens.index].value, tokens)
+--     end
+    
+--     while true do
+--         local current_token = tokens[tokens.index]
+
+--         local current_precedence = get_precedence(current_token.value, tokens)
+
+--         if tokens[tokens.index].type == "line_break" or match_token_type(tokens, "comma") then
+--             break
+--         end
+
+--         if current_precedence < precedence then
+--             break
+--         end
+
+--         if current_token.type == "operator" then
+--             local operator = current_token.value
+--             tokens.index = tokens.index + 1
+
+--             local right = parse_expression(tokens, current_precedence + 1)
+--             left = {type = "binary", left = left, operator = operator, right = right}
+--         end
+--     end
+
+--     return left 
+-- end
 
 function print_expression(ast)
     if ast == nil then
@@ -486,6 +567,16 @@ function print_expression(ast)
         local expression_str = print_expression(ast.expression)
         local body_str = print_expression(ast.body)
         local result = BOLD .. "While: " .. RESET .. expression_str .. BOLD .. "\nDo:\n" .. RESET .. body_str .. ":Close While" .. RESET
+        return result
+    elseif ast.type == "member" then
+        local object_str = print_expression(ast.object)
+        local property_str = print_expression(ast.property)
+        local result = object_str .. "." .. property_str
+        return result
+    elseif ast.type == "index" then
+        local object_str = print_expression(ast.object)
+        local index_str = print_expression(ast.index)
+        local result = object_str .. "[" .. index_str .. "]"
         return result
     elseif ast.type == "repeat" then
         local body_str = print_expression(ast.body)

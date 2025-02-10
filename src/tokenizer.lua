@@ -28,7 +28,7 @@ function tokenizer.tokenize(input, filename)
         {"operator", "^<="},
         {"operator", "^>="},
         {"operator", "^~="},
-        {"operator", "^[*/=%+%.-%^><]"},
+        {"operator", "^[*/=%+-%^><]"},
         {"operator", "^(and)%s"},
         {"operator", "^(or)%s"},
         {"operator", "^(not)%s"},
@@ -37,7 +37,7 @@ function tokenizer.tokenize(input, filename)
 
         {"identifier", "^[a-zA-Z_][a-zA-Z0-9_]*"},
 
-        {"delimiter", "^[{}%[%]()%]]"},
+        {"delimiter", "^[{}%[%]%.()%]]"},
 
         {"string", "^\"[^\"]*\""},
 
