@@ -82,6 +82,11 @@ function parse(tokens, params)
             current.left = { type = "glue" }
             current = current.left
             goto continue
+        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "do" then
+            current.right = parse_block(tokens)
+            current.left = { type = "glue" }
+            current = current.left
+            goto continue
         elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "while" then
             current.right = parse_while(tokens)
             current.left = { type = "glue" }
@@ -114,6 +119,26 @@ function parse(tokens, params)
     end
 
     return root
+end
+
+function parse_block(tokens)
+    local ast_node = {
+        type = "block",
+    }
+
+    if match_token_value(tokens, "do") then
+        tokens.index = tokens.index + 1
+    end
+
+    ast_node.body = parse(tokens, {inside_block = true})
+
+    if match_token_value(tokens, "end") then
+        tokens.index = tokens.index + 1
+    else
+        print_parse_error("Parse error", "Expected 'end' but got " .. tokens[tokens.index].value, tokens)
+    end
+
+    return ast_node
 end
 
 function parse_return(tokens)
@@ -466,6 +491,10 @@ function print_expression(ast)
         local body_str = print_expression(ast.body)
         local expression_str = print_expression(ast.expression)
         local result = BOLD .. "Repeat: " .. RESET .. BOLD .. "\nUntil:\n" .. RESET .. body_str .. ":Close Repeat" .. expression_str .. RESET
+        return result
+    elseif ast.type == "block" then
+        local body_str = print_expression(ast.body)
+        local result = BOLD .. "Block:\n" .. RESET .. body_str .. BOLD .. ":Close Block" .. RESET
         return result
     elseif ast.type == "if" then
         local expression_str = print_expression(ast.expression)

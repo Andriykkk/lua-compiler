@@ -1,9 +1,11 @@
 function print(a, b, c)
     some(a, b, c)
-    some(a, b, c)
-    return some
-    some(a, b, c)
-    return some2 + some
+    do
+        some(a, b, c)
+        return some
+        some(a, b, c)
+        return some2 + some
+    end
 end
 repeat
     if x > 10 then
