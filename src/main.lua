@@ -77,6 +77,11 @@ function parse(tokens, params)
             current.left = { type = "glue" }
             current = current.left
             goto continue
+        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "return" then
+            current.right = parse_return(tokens)
+            current.left = { type = "glue" }
+            current = current.left
+            goto continue
         elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "while" then
             current.right = parse_while(tokens)
             current.left = { type = "glue" }
@@ -109,6 +114,25 @@ function parse(tokens, params)
     end
 
     return root
+end
+
+function parse_return(tokens)
+    local ast_node = {
+        type = "return",
+    }
+
+    if match_token_value(tokens, "return") then
+        tokens.index = tokens.index + 1
+    end
+
+    if match_token_type(tokens, "line_break") then
+        tokens.index = tokens.index + 1
+        return ast_node
+    end
+
+    ast_node.value = parse_expression(tokens, 0)
+
+    return ast_node
 end
 
 function parse_repeat(tokens)
@@ -465,6 +489,9 @@ function print_expression(ast)
         local value = print_expression(ast.value)
         local result = BOLD .. "Function: " .. value .. "\nBody:\n" .. RESET .. body_str .. BOLD .. ":Close Function" .. RESET
         return result
+    elseif ast.type == "return" then
+        local value = print_expression(ast.value)
+        return "Return: " .. value
     elseif ast.type == "call" then
         local left_str = print_expression(ast.left)
         local right_str = print_expression(ast.right)

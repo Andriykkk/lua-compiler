@@ -20,6 +20,7 @@ function tokenizer.tokenize(input, filename)
         {"keyword", "^(repeat)%s"},
         {"keyword", "^(until)%s"},
         {"keyword", "^(do)%s"},
+        {"keyword", "^(return)%s"},
 
         -- operators
         {"operator", "^%.%."},
