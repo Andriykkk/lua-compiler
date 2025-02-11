@@ -34,17 +34,21 @@ function tokenizer.tokenize(input, filename)
         {"operator", "^(not)%s"},
 
         {"number", "^[+-]?%d+%.?%d*"},
+        {"boolean", "^(true)"},
+        {"boolean", "^(false)"},
+
+        {"nil", "^(nil)"},
 
         {"identifier", "^[a-zA-Z_][a-zA-Z0-9_]*"},
 
-        {"delimiter", "^[{}%[%]%.()%]]"},
+        {"delimiter", "^[{}%[%]%.,:()%]]"},
 
         {"string", "^\"[^\"]*\""},
+        {"string", "^'[^']*'"},
 
         {"line_break", "^\n"},
 
         {"whitespace", "^%s+"},
-        {"comma", "^,"},
     }
 
     while #input > 0 do
@@ -74,9 +78,9 @@ function tokenizer.tokenize(input, filename)
                     line = line + 1
                     column = 1
                     match = true
-                    if #tokens ~= 0 and tokens[#tokens].type ~= "line_break" then
-                        table.insert(tokens, {type = name, value = value, line = line, column = column})
-                    end
+                    -- if #tokens ~= 0 and tokens[#tokens].type ~= "line_break" then
+                    --     table.insert(tokens, {type = name, value = value, line = line, column = column})
+                    -- end
                     goto continue
                 end
 
