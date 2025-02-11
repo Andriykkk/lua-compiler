@@ -17,6 +17,7 @@ function tokenizer.tokenize(input, filename)
         {"keyword", "^(elseif)%s"},
         {"keyword", "^(end)%s"},
         {"keyword", "^(while)%s"},
+        {"keyword", "^(for)%s"},
         {"keyword", "^(repeat)%s"},
         {"keyword", "^(until)%s"},
         {"keyword", "^(do)%s"},

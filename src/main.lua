@@ -51,182 +51,6 @@ function match_token_value(tokens, value, shift)
     end
 end
 
-function parse(tokens, params)
-    local root = { type = "glue" }
-    local current = root
-
-    if params == nil then
-        params = {}
-    end
-    while true do
-        if tokens[tokens.index] == nil then
-            break
-        end
-        if (tokens[tokens.index].type == "keyword" and tokens[tokens.index].value == "local") or
-        (tokens[tokens.index].type == "identifier" and tokens[tokens.index + 1] ~= nil and tokens[tokens.index + 1].type == "operator" and tokens[tokens.index + 1].value == "=") then
-            if match_token_type(tokens, "keyword") and tokens[tokens.index].value == "local" then
-                tokens.index = tokens.index + 1
-            end
-            if match_token_type(tokens, "delimiter", 2) and match_token_value(tokens, "{", 2) then
-                tokens.index = tokens.index + 2
-                current.right = parse_table(tokens)
-                current.left = { type = "glue" }
-                current = current.left
-                goto continue
-            end
-            current.right = parser.parse_assignment(tokens)
-            current.left = { type = "glue" }
-            current = current.left
-            goto continue
-
-        elseif params.inside_block and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
-            break
-        elseif params.inside_branch and tokens[tokens.index].type == "keyword" and 
-            (match_token_value(tokens, "elseif") or match_token_value(tokens, "else")) then
-            break
-        elseif params.inside_block and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "until") then
-            break
-        elseif params.inside_branch and tokens[tokens.index].type == "keyword" and match_token_value(tokens, "end") then
-            tokens.index = tokens.index + 1
-            break
-
-        elseif (match_token_type(tokens, "identifier") and match_token_value(tokens, "(", 1)) then
-            current.right = parser.parse_call(tokens)
-            current.left = { type = "glue" }
-            current = current.left
-            goto continue
-        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "return" then
-            current.right = parser.parse_return(tokens)
-            current.left = { type = "glue" }
-            current = current.left
-            goto continue
-        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "do" then
-            current.right = parser.parse_block(tokens)
-            current.left = { type = "glue" }
-            current = current.left
-            goto continue
-        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "while" then
-            current.right = parser.parse_while(tokens)
-            current.left = { type = "glue" }
-            current = current.left
-            goto continue
-        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "function" then
-            current.right = parser.parse_function(tokens)
-            current.left = { type = "glue" }
-            current = current.left
-            goto continue
-        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "repeat" then
-            current.right = parser.parse_repeat(tokens)
-            current.left = { type = "glue" }
-            current = current.left
-            goto continue
-        elseif match_token_type(tokens, "keyword") and tokens[tokens.index].value == "if" then
-            current.right = parser.parse_if_statement(tokens)
-            current.left = { type = "glue" }
-            current = current.left
-            goto continue
-        elseif match_token_type(tokens, "identifier") and match_token_type(tokens, "delimiter", 1) and 
-        match_token_value(tokens, ":", 1) then
-            current.right = parser.parse_expression(tokens, 0)
-            current.left = { type = "glue" }
-            current = current.left
-            goto continue
-        elseif tokens[tokens.index].type == "line_break" then
-            tokens.index = tokens.index + 1
-            goto continue
-        else
-            print_parse_error("Parse error", "Unexpected keyword: " .. tokens[tokens.index].value, tokens)
-            break        
-        end
-
-        ::continue::
-    end
-
-    return root
-end
-
-function parse_table(tokens, params)
-    if params == nil then
-        params = {}
-    end
-    local root = { type = "table", fields = {} }
-
-    if  match_token_type(tokens, "delimiter") and match_token_value(tokens, "{") then
-        tokens.index = tokens.index + 1
-    else 
-        print_parse_error("Parse error", "Expected '{' but got " .. tokens[tokens.index].value, tokens)
-    end
-
-    local implicit_key = 1
-
-    while true do 
-        local current_token = tokens[tokens.index]
-
-        if match_token_type(tokens, "line_break") then
-            tokens.index = tokens.index + 1
-        end
-
-        if match_token_type(tokens, "delimiter") and match_token_value(tokens, "}") then
-            tokens.index = tokens.index + 1
-            break
-        end
-
-        local field = {}
-        
-        if match_token_type(tokens, "identifier") then
-            field.key = {type="identifier", value=tokens[tokens.index].value}
-            tokens.index = tokens.index + 1
-
-            if match_token_type(tokens, "operator") and match_token_value(tokens, "=") then
-                tokens.index = tokens.index + 1
-            else 
-                print_parse_error("Parse error", "Expected '=' but got " .. tokens[tokens.index].value, tokens)
-            end
-        elseif match_token_type(tokens, "delimiter") and match_token_value(tokens, "[") then
-            tokens.index = tokens.index + 1
-            field.key = parse_expression(tokens, 0)
-            
-            if match_token_type(tokens, "delimiter") and match_token_value(tokens, "]") then
-                tokens.index = tokens.index + 1
-            else
-                print_parse_error("Parse error", "Expected ']' but got " .. tokens[tokens.index].value, tokens)
-            end
-
-            if match_token_type(tokens, "operator") and match_token_value(tokens, "=") then
-                tokens.index = tokens.index + 1
-            else
-                print_parse_error("Parse error", "Expected '=' but got " .. tokens[tokens.index].value, tokens)
-            end
-        elseif match_token_type(tokens, "delimiter") and match_token_value(tokens, "{") then
-            field.key = { type = "number", value = implicit_key }
-            implicit_key = implicit_key + 1
-        else
-            print_parse_error("Parse error", "Expected identifier or '[' but got " .. tokens[tokens.index].value, tokens)
-        end
-        
-        if match_token_type(tokens, "delimiter") and match_token_value(tokens, "{") then
-            field.value = parse_table(tokens)
-        else
-            field.value = parse_expression(tokens, 0)
-        end
-
-        root.fields[#root.fields + 1] = field
-        
-        -- if match_token_type(tokens, "delimiter") and (match_token_value(tokens, ",") or
-        -- match_token_value(tokens, ";")) then
-        --     tokens.index = tokens.index + 1
-        -- end 
-        if match_token_type(tokens, "delimiter") and (match_token_value(tokens, ",") or match_token_value(tokens, ";")) then
-            tokens.index = tokens.index + 1
-        elseif not (match_token_type(tokens, "delimiter") and match_token_value(tokens, "}")) then
-            -- If the next token is not a comma or the end of the table, raise an error
-            print_parse_error("Parse error", "Expected ',' or '}' but got " .. tokens[tokens.index].value, tokens)
-        end
-    end
-
-    return root
-end
-
 function print_expression(ast)
     if ast == nil then
         return ""
@@ -238,6 +62,13 @@ function print_expression(ast)
         return ast.value
     elseif ast.type == "boolean" then
         return ast.value
+    elseif ast.type == "for" then
+        local left_str = print_expression(ast.left)
+        local start_str = print_expression(ast.start)
+        local stop_str = print_expression(ast.stop)
+        local step_str = print_expression(ast.step)
+        local body_str = print_expression(ast.body)
+        return BOLD .. "For: " .. RESET .. left_str .. " = " .. start_str .. " to " .. stop_str .. " step " .. step_str .. BOLD .. "\nDo:\n" .. RESET .. body_str .. BOLD .. ":Close For" .. RESET
     elseif ast.type == "nil" then
         return "nil"
     elseif ast.type == "table" then
@@ -332,6 +163,72 @@ function print_expression(ast)
     end
 end
 
+function ast_walker(ast)
+    local result = {start = ast, functions = {}}
+
+    function walker(ast) 
+        if ast == nil then
+            return 
+        end
+
+        if ast.type == "number" then
+            return
+        elseif ast.type == "string" then
+            return 
+        elseif ast.type == "boolean" then
+            return 
+        elseif ast.type == "for" then
+            return
+        elseif ast.type == "nil" then
+            return  
+        elseif ast.type == "table" then
+            return  
+        elseif ast.type == "while" then
+            return  
+        elseif ast.type == "method" then
+            return 
+        elseif ast.type == "member" then 
+            return 
+        elseif ast.type == "index" then
+            return
+        elseif ast.type == "repeat" then
+            return 
+        elseif ast.type == "block" then
+            return
+        elseif ast.type == "if" then
+            return 
+        elseif ast.type == "elseif" then
+            return 
+        elseif ast.type == "else" then
+            return 
+        elseif ast.type == "function" then
+            result.functions[ast.value] = ast
+            return
+        elseif ast.type == "return" then
+            return 
+        elseif ast.type == "call" then
+            return
+        elseif ast.type == "parameters" then
+            return
+        elseif ast.type == "glue" then
+            local left_str = walker(ast.left)
+            local right_str = walker(ast.right)
+            return 
+        elseif ast.type == "binary" then
+            return
+        elseif ast.type == "assignment" then
+            return 
+        elseif ast.type == "identifier" then
+            return
+        else
+            return
+        end
+    end
+
+    walker(ast)
+    return result
+end
+
 -- globals
 args = {}
 -- 
@@ -341,10 +238,14 @@ function main()
 
     local content = read.read_source(args.filename)
     local tokens = tokenizer.tokenize(content, args.filename)
-    local ast = parse(tokens)
-    print(print_expression(ast)) 
-    -- for i, token in ipairs(tokens) do
-    --     print(token.type .. ": " .. token.value)
+    local ast = parser.parse(tokens)
+    tokens = nil
+
+    local ast_walker = ast_walker(ast)
+    -- print(print_expression(ast)) 
+    -- for _, func in pairs(ast_walker.functions) do
+    --     -- print(print_expression(func))
+    --     print(func.value.value)
     -- end
 
 end
