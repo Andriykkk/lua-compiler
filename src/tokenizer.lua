@@ -8,6 +8,19 @@ function tokenizer.tokenize(input, filename)
     local patterns = {
         {"comment", "^%-%-.[^\n]*"},
 
+        -- operators
+        {"operator", "^%.%."},
+        {"operator", "^=="},
+        {"operator", "^%%"},
+        {"operator", "^<="},
+        {"operator", "^>="},
+        {"operator", "^~="},
+        {"operator", "^%%"},
+        {"operator", "^[*/=%+-%^><]"},
+        {"operator", "^(and)%s"},
+        {"operator", "^(or)%s"},
+        {"un_op", "^(not)%s"},
+
         -- keywords
         {"keyword", "^(function)%s"},
         {"keyword", "^(local)%s"},
@@ -22,17 +35,6 @@ function tokenizer.tokenize(input, filename)
         {"keyword", "^(until)%s"},
         {"keyword", "^(do)%s"},
         {"keyword", "^(return)%s"},
-
-        -- operators
-        {"operator", "^%.%."},
-        {"operator", "^=="},
-        {"operator", "^<="},
-        {"operator", "^>="},
-        {"operator", "^~="},
-        {"operator", "^[*/=%+-%^><]"},
-        {"operator", "^(and)%s"},
-        {"operator", "^(or)%s"},
-        {"operator", "^(not)%s"},
 
         {"number", "^[+-]?%d+%.?%d*"},
         {"boolean", "^(true)"},

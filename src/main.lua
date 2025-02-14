@@ -1,6 +1,7 @@
 local tokenizer = require("tokenizer")
 local parser = require("parser")
 local read = require("read")
+local ast_tree = require("ast")
 
 local RESET = "\27[0m"
 local BOLD = "\27[1m"
@@ -163,70 +164,92 @@ function print_expression(ast)
     end
 end
 
-function ast_walker(ast)
-    local result = {start = ast, functions = {}}
+function executor(ast)
+    local functions = ast.functions
+    local standart_functions = {
+        print = print
+    }
+    local start = ast.start
 
-    function walker(ast) 
-        if ast == nil then
+    local current_scope = {father = nil, variables = {}}
+
+    local operators = {
+        ['or'] = function(a, b) return a or b end,
+        ['and'] = function(a, b) return a and b end,
+        ["<"] = function(a, b) return a < b end,
+        [">"] = function(a, b) return a > b end,
+        ["<="] = function(a, b) return a <= b end,
+        [">="] = function(a, b) return a >= b end,
+        ["=="] = function(a, b) return a == b end,
+        ["~="] = function(a, b) return a ~= b end,
+        [".."] = function(a, b) return a .. b end,
+        ["+"] = function(a, b) return a + b end,
+        ["-"] = function(a, b) return a - b end,
+        ["*"] = function(a, b) return a * b end,
+        ["/"] = function(a, b) return a / b end,
+        ['%'] = function(a, b) return a % b end,
+        -- ['not'] = function(a) return not a end,
+        -- ['-'] = function(a) return -a end,
+        ['^'] = function(a, b) return a ^ b end,
+        ['.'] = function(a, b) return a[b] end
+    }
+
+    local types = {
+        ["number"] = function(value) return value.value end,
+        ["string"] = function(value) return value.value end,
+        ["call"] = function(ast)
+            if standart_functions[ast.left.value] ~= nil then
+                local params = {}
+                for i, param in ipairs(ast.right.value) do
+                    params[i] = walker(param)
+                end
+                return standart_functions[ast.left.value](unpack(params))
+            end
+        end,
+        ["block"] = function(ast)
+            local scope = { father = current_scope, variables = {}}
+            current_scope = scope
+            local body = walker(ast.body)
+            return body
+        end,
+        ["glue"] = function(ast)
+            local right = walker(ast.right)
+            local left = walker(ast.left)
             return 
+        end,
+        ["binary"] = function(ast)
+            local left = walker(ast.left)
+            local right = walker(ast.right)
+            return operators[ast.operator](left, right)
+        end,
+        ["assignment"] = function(ast)
+            -- current_scope[ast.left.value] = ast.left.value
+            local left = walker(ast.left)
+            local right = walker(ast.right)
+            current_scope.variables[left] = right
+            return right
+        end,
+        ["identifier"] = function(ast)
+            local scope = current_scope
+            local variable = nil
+            while scope ~= nil do
+                variable = scope.variables[ast.value]
+                if variable ~= nil then
+                    break
+                end
+                scope = scope.father
+            end
+            return variable
         end
+    }
 
-        if ast.type == "number" then
-            return
-        elseif ast.type == "string" then
-            return 
-        elseif ast.type == "boolean" then
-            return 
-        elseif ast.type == "for" then
-            return
-        elseif ast.type == "nil" then
-            return  
-        elseif ast.type == "table" then
-            return  
-        elseif ast.type == "while" then
-            return  
-        elseif ast.type == "method" then
-            return 
-        elseif ast.type == "member" then 
-            return 
-        elseif ast.type == "index" then
-            return
-        elseif ast.type == "repeat" then
-            return 
-        elseif ast.type == "block" then
-            return
-        elseif ast.type == "if" then
-            return 
-        elseif ast.type == "elseif" then
-            return 
-        elseif ast.type == "else" then
-            return 
-        elseif ast.type == "function" then
-            result.functions[ast.value] = ast
-            return
-        elseif ast.type == "return" then
-            return 
-        elseif ast.type == "call" then
-            return
-        elseif ast.type == "parameters" then
-            return
-        elseif ast.type == "glue" then
-            local left_str = walker(ast.left)
-            local right_str = walker(ast.right)
-            return 
-        elseif ast.type == "binary" then
-            return
-        elseif ast.type == "assignment" then
-            return 
-        elseif ast.type == "identifier" then
-            return
-        else
-            return
+    function walker(ast)
+        if ast ~=nil then
+            return types[ast.type](ast)
         end
     end
 
-    walker(ast)
-    return result
+    walker(start)
 end
 
 -- globals
@@ -241,11 +264,15 @@ function main()
     local ast = parser.parse(tokens)
     tokens = nil
 
-    local ast_walker = ast_walker(ast)
-    -- print(print_expression(ast)) 
+    local ast_walker = ast_tree.ast_walker(ast)
+    
+    -- executor(ast_walker)
+    print(print_expression(ast)) 
+    -- for i, token in ipairs(tokens) do
+    --     print(token.type, token.value)
+    -- end
     -- for _, func in pairs(ast_walker.functions) do
     --     -- print(print_expression(func))
     --     print(func.value.value)
     -- end
-
 end

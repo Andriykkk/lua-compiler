@@ -16,6 +16,7 @@ function get_precedence(token, tokens)
         ["-"] = 5,
         ["*"] = 6,
         ["/"] = 6,
+        ["%"] = 6,
         ["not"] = 7,
         ["-"] = 8,
         ["^"] = 9,
